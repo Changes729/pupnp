@@ -46,6 +46,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* for memset()*/
+#include <stdint.h>
 
 /*!
  * \brief Returns the difference in milliseconds between two timeval structures.
@@ -1267,6 +1268,11 @@ int ThreadPoolGetStats(ThreadPool *tp, ThreadPoolStats *stats)
 #endif /* STATS */
 
 #ifdef _WIN32
+	/**
+	 * Note: some broken versions only have 8 trailing zero's, the correct epoch has 9 trailing zero's
+	 * This magic number is the number of 100 nanosecond intervals since January 1, 1601 (UTC)
+	 * until 00:00:00 January 1, 1970
+	 */
 	#if defined(_MSC_VER) || defined(_MSC_EXTENSIONS)
 		#define DELTA_EPOCH_IN_MICROSECS 11644473600000000Ui64
 	#else
@@ -1275,34 +1281,29 @@ int ThreadPoolGetStats(ThreadPool *tp, ThreadPoolStats *stats)
 
 int gettimeofday(struct timeval *tv, struct timezone *tz)
 {
-	FILETIME ft;
-	unsigned __int64 tmpres = 0;
-	static int tzflag;
+    if (tv) {
+        FILETIME               filetime; /* 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 00:00 UTC */
+        ULARGE_INTEGER         x;
+        ULONGLONG              usec;
 
-	if (tv) {
-		GetSystemTimeAsFileTime(&ft);
+#if _WIN32_WINNT >= _WIN32_WINNT_WIN8
+        GetSystemTimePreciseAsFileTime(&filetime);
+#else
+        GetSystemTimeAsFileTime(&filetime);
+#endif
+        x.LowPart =  filetime.dwLowDateTime;
+        x.HighPart = filetime.dwHighDateTime;
+        usec = x.QuadPart / 10  -  DELTA_EPOCH_IN_MICROSECS;
+        tv->tv_sec  = (time_t)(usec / 1000000ULL);
+        tv->tv_usec = (long)(usec % 1000000ULL);
+    }
 
-		tmpres |= ft.dwHighDateTime;
-		tmpres <<= 32;
-		tmpres |= ft.dwLowDateTime;
-
-		/*converting file time to unix epoch*/
-		tmpres /= 10; /*convert into microseconds*/
-		tmpres -= DELTA_EPOCH_IN_MICROSECS;
-		tv->tv_sec = (long)(tmpres / 1000000UL);
-		tv->tv_usec = (long)(tmpres % 1000000UL);
-	}
-	if (tz) {
-		if (!tzflag) {
-			_tzset();
-			tzflag++;
-		}
-		long itz = 0;
-		_get_timezone(&itz);
-		tz->tz_minuteswest = (int)(itz / 60);
-		_get_daylight(&tz->tz_dsttime);
-	}
-
-	return 0;
+    if (tz) {
+        TIME_ZONE_INFORMATION timezone;
+        GetTimeZoneInformation(&timezone);
+        tz->tz_minuteswest = timezone.Bias;
+        tz->tz_dsttime = 0;
+    }
+    return 0;
 }
 #endif /* _WIN32 */

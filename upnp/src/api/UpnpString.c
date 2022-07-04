@@ -32,7 +32,7 @@ static size_t strnlen(const char *s, size_t n) { return strnlen_s(s, n); }
 		 * (potentially) different linkage */
 		/* strnlen() is a GNU extension. */
 		#if !HAVE_STRNLEN
-static size_t strnlen(const char *s, size_t n)
+size_t strnlen(const char *s, size_t n)
 {
 	const char *p = (const char *)memchr(s, 0, n);
 	return p ? p - s : n;
@@ -43,7 +43,7 @@ static size_t strnlen(const char *s, size_t n)
 
 /* strndup() is a GNU extension. */
 #if !HAVE_STRNDUP || defined(_WIN32)
-static char *strndup(const char *__string, size_t __n)
+char *strndup(const char *__string, size_t __n)
 {
 	size_t strsize = strnlen(__string, __n);
 	char *newstr = (char *)malloc(strsize + 1);
